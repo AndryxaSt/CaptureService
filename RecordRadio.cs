@@ -10,16 +10,15 @@ namespace CaptureRadio
     {
         static DateTime timeNow = default;
         static Task Time;
-        static CancellationTokenSource source = new CancellationTokenSource();
-        private bool IsStoped { get; set; }
+        static CancellationTokenSource source;
 
-        CancellationToken token = source.Token;
-
-        Task TaskCapture;
-
-        readonly string timeToStartRecord, path, url;
+        CancellationToken token;
+        readonly string timeToStartRecord, url;
         readonly int hoursToRecord;
 
+        Task TaskCapture;
+        bool IsStoped;
+        string path;
 
         static RecordRadio()
         {
@@ -44,7 +43,7 @@ namespace CaptureRadio
         {
 
         }
-        public RecordRadio(string timeToStartRecord, int hoursToRecord) : this(timeToStartRecord, hoursToRecord, $@"D:\NewRockStream\StreamDate{DateTime.Now.Day}-{DateTime.Now.Month}\")
+        public RecordRadio(string timeToStartRecord, int hoursToRecord) : this(timeToStartRecord, hoursToRecord, $@"D:\NewRockStream\")
         {
 
         }
@@ -64,14 +63,16 @@ namespace CaptureRadio
 
         void GetStream()
         {
-            Directory.CreateDirectory(path);
+            string directory = $@"StreamDate{DateTime.Now.Day}-{DateTime.Now.Month}\";
 
-            var fs = new FileStream(path + $@"NewRock{timeNow.Hour}-{timeNow.Minute}.mp3", FileMode.Create);
+            Directory.CreateDirectory(path + directory);
+
+            var fs = new FileStream(path + directory + $@"NewRock{timeNow.Hour}-{timeNow.Minute}.mp3", FileMode.Create);
 
             HttpWebRequest myRequest = (HttpWebRequest)WebRequest.Create(url);
             WebResponse myResponse = myRequest.GetResponse();
 
-            token.Register(() => { myRequest.Abort(); fs.Close(); });
+            token.Register(() => { myRequest.Abort(); });
 
             try
             {
@@ -83,6 +84,7 @@ namespace CaptureRadio
             }
             finally
             {
+                source.Dispose();
                 fs.Close();
                 fs.Dispose();
                 myResponse.Close();
@@ -98,12 +100,17 @@ namespace CaptureRadio
                 {
                     if (timeNow.ToShortTimeString() == timeToStartRecord)
                     {
-                        Console.WriteLine($"Record started at {timeNow} and be stoped at {timeNow + TimeSpan.FromHours(hoursToRecord)}");
-                        TaskCapture = new Task(GetStream, token);
+                        source = new CancellationTokenSource();
                         source.CancelAfter(TimeSpan.FromHours(hoursToRecord));
-                        TaskCapture.Start();
-                        TaskCapture.Wait();
-                        TaskCapture.Dispose();
+
+                        token = source.Token;
+
+                        Console.WriteLine($"Record started at {timeNow}");
+
+                        new Task(GetStream, token).Start();
+
+                        Thread.Sleep(TimeSpan.FromHours(hoursToRecord));
+
                         break;
                     }
                     else
